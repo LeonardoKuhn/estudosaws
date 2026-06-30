@@ -1,0 +1,15 @@
+# deps
+node_modules/
+
+# build output
+api/dist/
+web/.next/
+web/out/
+
+# env (nunca commitar credenciais reais)
+.env
+.env.local
+
+# logs / SO
+*.log
+.DS_Store

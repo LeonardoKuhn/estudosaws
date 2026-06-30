@@ -1,0 +1,88 @@
+# ===========================================================================
+# Orquestração local da metade STATEFUL do estudo: postgres + redis + api +
+# worker. O frontend (web/) roda fora do compose, em `npm run dev`.
+#
+# CONCEITO CENTRAL desta fase: `api` e `worker` usam a MESMA imagem/build
+# (./api). A única diferença entre eles é o `command` de start:
+#   - api    -> node dist/main.js   (servidor HTTP)
+#   - worker -> node dist/worker.js (consumidor da fila, sem porta)
+# ===========================================================================
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    # Sem porta publicada no host: api e worker acessam pela rede interna do
+    # compose (hostname `postgres`). Evita conflito com Postgres locais.
+    volumes:
+      # Volume nomeado -> os dados (a contagem) sobrevivem a `down`/`up`.
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    # Sem volume: fila efêmera está ok para o estudo.
+    # Sem porta publicada: acessado só internamente (hostname `redis`).
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build: ./api
+    # Tag explícita: api e worker apontam para ESTA mesma imagem. O compose
+    # constrói uma vez só e os dois serviços reusam o mesmo Image ID.
+    image: deploy-estudo-api:latest
+    # Estratégia de migration (simples): roda `prisma migrate deploy` ANTES de
+    # subir a API. Como api e worker compartilham o mesmo banco, deixamos a
+    # migration só aqui; o worker espera a API ficar saudável.
+    command: sh -c "npx prisma migrate deploy && node dist/main.js"
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      REDIS_URL: redis://redis:6379
+      PORT: 3000
+    # Host 3010 -> container 3000 (a porta 3000 do host já estava em uso).
+    # O frontend lê NEXT_PUBLIC_API_URL=http://localhost:3010 (ver .env).
+    ports:
+      - '3010:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        ['CMD-SHELL', 'node -e "fetch(''http://localhost:3000/clicks/count'').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  worker:
+    # MESMA imagem da api (mesmo `image:` acima). Só muda o command (e não
+    # expõe porta). `build` aqui também garante que a imagem exista mesmo se
+    # o worker for iniciado isolado.
+    build: ./api
+    image: deploy-estudo-api:latest
+    command: node dist/worker.js
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      # Garante que a migration (rodada pela api) já aplicou o schema.
+      api:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

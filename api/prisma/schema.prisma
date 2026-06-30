@@ -1,0 +1,16 @@
+// Prisma schema mínimo para o estudo de deploy.
+// Um único modelo: cada clique processado vira uma linha em "Click".
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Click {
+  id        Int      @id @default(autoincrement())
+  createdAt DateTime @default(now())
+}
