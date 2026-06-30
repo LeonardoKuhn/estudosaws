@@ -2,8 +2,8 @@ import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 
 /**
- * Wrapper do PrismaClient como provider injetável do Nest.
- * Abre a conexão quando o módulo inicia e fecha quando ele é destruído.
+ * PrismaClient wrapped as an injectable Nest provider.
+ * Opens the connection when the module starts and closes it on destroy.
  */
 @Injectable()
 export class PrismaService

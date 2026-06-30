@@ -1,14 +1,14 @@
 # ---------------------------------------------------------------------------
-# Imagem ÚNICA usada tanto pela API quanto pelo worker.
-# A diferença entre os dois serviços é só o comando de start (definido no
+# SINGLE image used by both the API and the worker.
+# The only difference between the two services is the start command (defined in
 # docker-compose: `node dist/main.js` vs `node dist/worker.js`).
 # ---------------------------------------------------------------------------
 
-# ---- Stage 1: build (instala TODAS as deps, gera Prisma Client, compila TS)
+# ---- Stage 1: build (install ALL deps, generate Prisma Client, compile TS)
 FROM node:22-slim AS build
 WORKDIR /app
 
-# openssl é necessário para o engine do Prisma rodar.
+# openssl is required for the Prisma engine to run.
 RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists/*
 
 COPY package*.json ./
@@ -20,7 +20,7 @@ RUN npx prisma generate
 COPY . .
 RUN npm run build
 
-# ---- Stage 2: runtime (imagem enxuta, só deps de produção + dist)
+# ---- Stage 2: runtime (slim image, only production deps + dist)
 FROM node:22-slim AS runtime
 WORKDIR /app
 ENV NODE_ENV=production
@@ -30,12 +30,12 @@ RUN apt-get update -y && apt-get install -y openssl && rm -rf /var/lib/apt/lists
 COPY package*.json ./
 RUN npm ci --omit=dev
 
-# Prisma Client + engine gerados (precisamos do schema para `migrate deploy`).
+# Generated Prisma Client + engine (we need the schema for `migrate deploy`).
 COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY --from=build /app/node_modules/@prisma ./node_modules/@prisma
 COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/dist ./dist
 
-# CMD default roda a API. O compose sobrescreve o `command` do worker para
-# `node dist/worker.js` usando ESTA MESMA imagem.
+# Default CMD runs the API. The compose overrides the worker `command` to
+# `node dist/worker.js` using THIS SAME image.
 CMD ["node", "dist/main.js"]

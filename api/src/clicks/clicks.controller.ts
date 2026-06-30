@@ -14,16 +14,16 @@ export class ClicksController {
 
   constructor(private readonly clicksService: ClicksService) {}
 
-  // POST /clicks -> enfileira o job e responde imediatamente 202.
+  // POST /clicks -> enqueues the job and immediately responds with 202.
   @Post()
   @HttpCode(HttpStatus.ACCEPTED)
   async registerClick(): Promise<{ queued: true }> {
-    this.logger.log('POST /clicks recebido — enfileirando job');
+    this.logger.log('POST /clicks received — enqueuing job');
     await this.clicksService.enqueue();
     return { queued: true };
   }
 
-  // GET /clicks/count -> contagem atual (alvo do polling do frontend).
+  // GET /clicks/count -> current count (target of the frontend polling).
   @Get('count')
   async count(): Promise<{ count: number }> {
     const count = await this.clicksService.count();

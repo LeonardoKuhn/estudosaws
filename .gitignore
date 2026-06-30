@@ -6,10 +6,10 @@ api/dist/
 web/.next/
 web/out/
 
-# env (nunca commitar credenciais reais)
+# env (never commit real credentials)
 .env
 .env.local
 
-# logs / SO
+# logs / OS
 *.log
 .DS_Store

@@ -1,11 +1,11 @@
 # ===========================================================================
-# Orquestração local da metade STATEFUL do estudo: postgres + redis + api +
-# worker. O frontend (web/) roda fora do compose, em `npm run dev`.
+# Local orchestration of the STATEFUL half of the study: postgres + redis +
+# api + worker. The frontend (web/) runs outside the compose, via `npm run dev`.
 #
-# CONCEITO CENTRAL desta fase: `api` e `worker` usam a MESMA imagem/build
-# (./api). A única diferença entre eles é o `command` de start:
-#   - api    -> node dist/main.js   (servidor HTTP)
-#   - worker -> node dist/worker.js (consumidor da fila, sem porta)
+# CORE CONCEPT of this phase: `api` and `worker` use the SAME image/build
+# (./api). The only difference between them is the start `command`:
+#   - api    -> node dist/main.js   (HTTP server)
+#   - worker -> node dist/worker.js (queue consumer, no port)
 # ===========================================================================
 
 services:
@@ -15,10 +15,10 @@ services:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
-    # Sem porta publicada no host: api e worker acessam pela rede interna do
-    # compose (hostname `postgres`). Evita conflito com Postgres locais.
+    # No host port published: api and worker reach it over the compose internal
+    # network (hostname `postgres`). Avoids clashing with local Postgres.
     volumes:
-      # Volume nomeado -> os dados (a contagem) sobrevivem a `down`/`up`.
+      # Named volume -> the data (the count) survives `down`/`up`.
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
@@ -28,8 +28,8 @@ services:
 
   redis:
     image: redis:7-alpine
-    # Sem volume: fila efêmera está ok para o estudo.
-    # Sem porta publicada: acessado só internamente (hostname `redis`).
+    # No volume: an ephemeral queue is fine for the study.
+    # No host port published: reached only internally (hostname `redis`).
     healthcheck:
       test: ['CMD', 'redis-cli', 'ping']
       interval: 5s
@@ -38,19 +38,19 @@ services:
 
   api:
     build: ./api
-    # Tag explícita: api e worker apontam para ESTA mesma imagem. O compose
-    # constrói uma vez só e os dois serviços reusam o mesmo Image ID.
+    # Explicit tag: api and worker point to THIS same image. Compose builds it
+    # once and both services reuse the same Image ID.
     image: deploy-estudo-api:latest
-    # Estratégia de migration (simples): roda `prisma migrate deploy` ANTES de
-    # subir a API. Como api e worker compartilham o mesmo banco, deixamos a
-    # migration só aqui; o worker espera a API ficar saudável.
+    # Migration strategy (simple): run `prisma migrate deploy` BEFORE starting
+    # the API. Since api and worker share the same database, the migration lives
+    # only here; the worker waits for the API to become healthy.
     command: sh -c "npx prisma migrate deploy && node dist/main.js"
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?schema=public
       REDIS_URL: redis://redis:6379
       PORT: 3000
-    # Host 3010 -> container 3000 (a porta 3000 do host já estava em uso).
-    # O frontend lê NEXT_PUBLIC_API_URL=http://localhost:3010 (ver .env).
+    # Host 3010 -> container 3000 (host port 3000 was already in use).
+    # The frontend reads NEXT_PUBLIC_API_URL=http://localhost:3010 (see .env).
     ports:
       - '3010:3000'
     depends_on:
@@ -66,9 +66,9 @@ services:
       retries: 10
 
   worker:
-    # MESMA imagem da api (mesmo `image:` acima). Só muda o command (e não
-    # expõe porta). `build` aqui também garante que a imagem exista mesmo se
-    # o worker for iniciado isolado.
+    # SAME image as the api (same `image:` above). Only the command changes (and
+    # it exposes no port). `build` here also ensures the image exists even if the
+    # worker is started in isolation.
     build: ./api
     image: deploy-estudo-api:latest
     command: node dist/worker.js
@@ -80,7 +80,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      # Garante que a migration (rodada pela api) já aplicou o schema.
+      # Ensures the migration (run by the api) has already applied the schema.
       api:
         condition: service_healthy
 

@@ -13,17 +13,17 @@ export class ClicksService {
   ) {}
 
   /**
-   * Não faz trabalho pesado: só enfileira um job e volta.
-   * Quem realmente grava no banco é o worker (processo separado).
+   * Does no heavy work: it just enqueues a job and returns.
+   * The actual DB write happens in the worker (a separate process).
    */
   async enqueue(): Promise<void> {
     const job = await this.queue.add('register-click', {
       requestedAt: new Date().toISOString(),
     });
-    this.logger.log(`Clique enfileirado (jobId=${job.id})`);
+    this.logger.log(`Click enqueued (jobId=${job.id})`);
   }
 
-  /** Conta quantos cliques o worker já processou e gravou. */
+  /** Counts how many clicks the worker has already processed and stored. */
   count(): Promise<number> {
     return this.prisma.click.count();
   }

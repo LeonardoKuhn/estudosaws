@@ -1,108 +1,157 @@
-# Deploy Estudo — Contador de cliques assíncrono
+# Deploy Study — Async Click Counter
 
-Projeto-âncora **mínimo** para exercitar um stack completo de deploy:
-frontend + API de longa duração + worker de fila + Postgres + Redis.
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![NestJS](https://img.shields.io/badge/NestJS-E0234E?logo=nestjs&logoColor=white)](https://nestjs.com/)
+[![BullMQ](https://img.shields.io/badge/BullMQ-DD2C00?logo=redis&logoColor=white)](https://bullmq.io/)
+[![Prisma](https://img.shields.io/badge/Prisma-2D3748?logo=prisma&logoColor=white)](https://www.prisma.io/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Redis](https://img.shields.io/badge/Redis-FF4438?logo=redis&logoColor=white)](https://redis.io/)
+[![Next.js](https://img.shields.io/badge/Next.js-000000?logo=nextdotjs&logoColor=white)](https://nextjs.org/)
+[![Docker](https://img.shields.io/badge/Docker-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
 
-A aplicação em si é proposital e deliberadamente boba: um botão que incrementa
-um contador. O valor está no stack e no fluxo assíncrono ponta a ponta.
+**🌐 English** · [Português](README.pt-BR.md)
 
-## O fluxo
+A deliberately **minimal anchor project** to exercise a complete deployment
+stack: frontend + long-running API + queue worker + Postgres + Redis.
 
-1. O frontend tem um botão **"Registrar clique"** e mostra **"Cliques processados"**.
-2. O clique faz `POST /clicks` na API.
-3. A API **enfileira um job** no BullMQ e responde na hora `202 { queued: true }`.
-4. O **worker** (processo separado) consome o job, espera **2s de propósito**
-   (simula trabalho real) e grava uma linha na tabela `clicks` do Postgres.
-5. O frontend faz polling em `GET /clicks/count` a cada 1,5s e atualiza o número.
+The app itself is intentionally trivial — a button that increments a counter.
+The value is in the **stack** and the **end-to-end asynchronous flow**, not in
+the feature. It's a sandbox for learning how to ship a multi-service system.
 
-O delay de 2s é intencional: deixa visível que outro processo faz o trabalho —
-o número sobe *depois* do clique.
+## The flow
+
+1. The frontend has a **"Register click"** button and shows **"Processed clicks"**.
+2. A click sends `POST /clicks` to the API.
+3. The API **enqueues a job** on BullMQ and immediately responds `202 { queued: true }`.
+4. The **worker** (a separate process) consumes the job, waits **2s on purpose**
+   (simulating real work), and writes a row into the `clicks` table in Postgres.
+5. The frontend polls `GET /clicks/count` every 1.5s and updates the number.
+
+The 2s delay is intentional: it makes it visible that a different process does
+the work — the number goes up *after* the click.
+
+```mermaid
+sequenceDiagram
+    participant U as Browser (Next.js :3001)
+    participant A as API (NestJS :3000)
+    participant Q as Redis (BullMQ queue)
+    participant W as Worker (NestJS)
+    participant D as PostgreSQL
+
+    U->>A: POST /clicks
+    A->>Q: enqueue job
+    A-->>U: 202 { queued: true }
+    W->>Q: consume job
+    Note over W: wait 2s (simulated work)
+    W->>D: INSERT click
+    loop every 1.5s
+        U->>A: GET /clicks/count
+        A->>D: SELECT count(*)
+        A-->>U: { count }
+    end
+```
+
+## Core concept: one image, two processes
+
+`api` and `worker` are **two entry points of the same source code**
+(`dist/main.js` and `dist/worker.js`), built into the **same Docker image**. In
+production they become two services that differ only in their start command.
+
+```mermaid
+flowchart LR
+    src["api/ source<br/>main.ts + worker.ts"] --> img["Docker image<br/>deploy-estudo-api"]
+    img -->|"node dist/main.js"| api["api service<br/>HTTP :3000"]
+    img -->|"node dist/worker.js"| worker["worker service<br/>no port"]
+    api --> pg[("PostgreSQL")]
+    worker --> pg
+    api --> redis[("Redis / BullMQ")]
+    worker --> redis
+```
 
 ## Stack
 
-| Camada        | Tecnologia                         |
-| ------------- | ---------------------------------- |
-| API + worker  | NestJS 11 (TypeScript)             |
-| Fila          | BullMQ + Redis                     |
-| Banco / ORM   | PostgreSQL + Prisma                |
-| Frontend      | Next.js 15 (App Router)            |
-| Orquestração  | Docker Compose                     |
+| Layer            | Technology                  |
+| ---------------- | --------------------------- |
+| API + worker     | NestJS 11 (TypeScript)      |
+| Queue            | BullMQ + Redis              |
+| Database / ORM   | PostgreSQL + Prisma         |
+| Frontend         | Next.js 15 (App Router)     |
+| Orchestration    | Docker Compose              |
 
-> **Conceito central:** `api` e `worker` são **dois entry points do mesmo
-> código** (`dist/main.js` e `dist/worker.js`), construídos na **mesma imagem
-> Docker**. Em produção viram dois serviços que diferem só no comando de start.
-
-## Estrutura
+## Structure
 
 ```
 .
 ├── docker-compose.yml   # postgres + redis + api + worker
-├── .env.example         # variáveis necessárias
-├── api/                 # NestJS: API web (main.ts) + worker (worker.ts)
-└── web/                 # Next.js: uma página (botão + número + polling)
+├── .env.example         # required variables
+├── api/                 # NestJS: web API (main.ts) + worker (worker.ts)
+└── web/                 # Next.js: one page (button + number + polling)
 ```
 
-## Como rodar
+## Getting started
 
-Pré-requisitos: **Docker** (com o daemon ligado) e **Node 20+** (para o frontend).
+Prerequisites: **Docker** (with the daemon running) and **Node 20+** (for the frontend).
 
-### 1. Variáveis de ambiente
+### 1. Environment variables
 
 ```bash
 cp .env.example .env
 ```
 
-### 2. Sobe a metade stateful (api + worker + postgres + redis)
+### 2. Start the stateful half (api + worker + postgres + redis)
 
 ```bash
 docker compose up --build
 ```
 
-Isso sobe os quatro serviços. A API aplica a migration do Prisma
-(`prisma migrate deploy`) antes de começar a servir.
+This brings up the four services. The API applies the Prisma migration
+(`prisma migrate deploy`) before it starts serving.
 
-- API: http://localhost:3010 (a porta 3000 do host costuma estar ocupada, então
-  publicamos a API em **3010 → 3000**; ajuste em `docker-compose.yml` se quiser)
+- API: http://localhost:3010 (host port 3000 is often already taken, so the API
+  is published as **3010 → 3000**; adjust in `docker-compose.yml` if you like)
 - `GET /clicks/count` → `{ "count": n }`
 - `POST /clicks` → `202 { "queued": true }`
 
-> Postgres e Redis **não** publicam portas no host (são acessados só pela rede
-> interna do compose), para não conflitar com instâncias locais.
+> Postgres and Redis **do not** publish host ports (they are reached only over
+> the compose internal network) to avoid clashing with local instances.
 
-### 3. Sobe o frontend (fora do compose)
+### 3. Start the frontend (outside the compose)
 
-Em outro terminal:
+In another terminal:
 
 ```bash
 cd web
-npm install      # primeira vez
+npm install      # first time
 npm run dev      # http://localhost:3001
 ```
 
-Abra http://localhost:3001, clique no botão e veja o número subir ~2s depois.
-Acompanhe os logs do `worker` no terminal do compose para vê-lo pegando e
-concluindo cada job.
+Open http://localhost:3001, click the button, and watch the number go up ~2s
+later. Follow the `worker` logs in the compose terminal to see it picking up and
+finishing each job.
 
-## Rodando a API/worker localmente sem Docker (opcional)
+> The frontend reads the API URL from `NEXT_PUBLIC_API_URL`. Create
+> `web/.env.local` with `NEXT_PUBLIC_API_URL=http://localhost:3010` so
+> `npm run dev` targets the right API.
 
-Precisa de um Postgres e um Redis acessíveis. Ajuste o `.env` apontando para
-`localhost` e:
+## Running the API/worker locally without Docker (optional)
+
+You'll need a reachable Postgres and Redis. Point `.env` at `localhost` and:
 
 ```bash
 cd api
 npm install
 npx prisma migrate deploy
-npm run start:dev        # API (porta 3000)
-npm run start:worker:dev # worker, em outro terminal
+npm run start:dev        # API (port 3000)
+npm run start:worker:dev # worker, in another terminal
 ```
 
-## Persistência
+## Persistence
 
-O Postgres usa um volume nomeado (`postgres_data`). Derrubar e subir o compose
-(`docker compose down && docker compose up`) **mantém a contagem**. Para zerar
-de verdade: `docker compose down -v`.
+Postgres uses a named volume (`postgres_data`). Tearing the stack down and
+bringing it back up (`docker compose down && docker compose up`) **keeps the
+count**. To reset for real: `docker compose down -v`.
 
-## Fora do escopo (de propósito)
+## Out of scope (on purpose)
 
-Sem autenticação, sem testes automatizados, sem CI/CD, sem deploy em nuvem.
-Isso é fase posterior, feita separadamente.
+No authentication, no automated tests, no CI/CD, no cloud deploy. Those are a
+later phase, done separately.

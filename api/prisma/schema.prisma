@@ -1,5 +1,5 @@
-// Prisma schema mínimo para o estudo de deploy.
-// Um único modelo: cada clique processado vira uma linha em "Click".
+// Minimal Prisma schema for the deploy study.
+// A single model: each processed click becomes a row in "Click".
 
 generator client {
   provider = "prisma-client-js"

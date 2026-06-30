@@ -3,17 +3,17 @@ import { Worker } from 'bullmq';
 import { CLICKS_QUEUE, createRedisConnection } from './queue/queue.constants';
 
 /**
- * Entry point do processo WORKER.
+ * Entry point for the WORKER process.
  *
- * Abordagem escolhida: script standalone (NÃO sobe o Nest HTTP server).
- * Motivo — é a opção mais simples: o worker só precisa do PrismaClient e do
- * BullMQ Worker, não de controllers/rotas/DI do Nest. Reaproveita do código
- * compartilhado o que importa de verdade: o nome da fila e a conexão Redis
- * (de queue.constants), garantindo que produtor e consumidor falem com o
- * mesmo Redis e a mesma fila.
+ * Chosen approach: a standalone script (it does NOT start the Nest HTTP
+ * server). Why — it is the simplest option: the worker only needs the
+ * PrismaClient and the BullMQ Worker, not Nest controllers/routes/DI. From the
+ * shared code it reuses what actually matters: the queue name and the Redis
+ * connection (from queue.constants), making sure producer and consumer talk to
+ * the same Redis and the same queue.
  *
- * Em produção: mesma imagem Docker da API, só muda o comando de start
- * (`node dist/worker.js` em vez de `node dist/main.js`).
+ * In production: same Docker image as the API, only the start command changes
+ * (`node dist/worker.js` instead of `node dist/main.js`).
  */
 
 const sleep = (ms: number): Promise<void> =>
@@ -26,27 +26,27 @@ async function main(): Promise<void> {
   const worker = new Worker(
     CLICKS_QUEUE,
     async (job) => {
-      console.log(`[worker] peguei job ${job.id} — processando...`);
+      console.log(`[worker] picked up job ${job.id} — processing...`);
 
-      // Delay proposital: simula trabalho real e torna visível que o número
-      // só sobe DEPOIS, porque quem processa é este processo separado.
+      // Intentional delay: simulates real work and makes it visible that the
+      // number only goes up AFTERWARDS, because a separate process does it.
       await sleep(2000);
 
       const click = await prisma.click.create({ data: {} });
-      console.log(`[worker] job ${job.id} concluído — click #${click.id} gravado`);
+      console.log(`[worker] job ${job.id} done — click #${click.id} stored`);
     },
     { connection: createRedisConnection() },
   );
 
   worker.on('failed', (job, err) => {
-    console.error(`[worker] job ${job?.id} falhou:`, err.message);
+    console.error(`[worker] job ${job?.id} failed:`, err.message);
   });
 
-  console.log(`[worker] online, ouvindo a fila "${CLICKS_QUEUE}"`);
+  console.log(`[worker] online, listening on the "${CLICKS_QUEUE}" queue`);
 
-  // Encerramento limpo (Ctrl+C / docker stop).
+  // Graceful shutdown (Ctrl+C / docker stop).
   const shutdown = async (): Promise<void> => {
-    console.log('[worker] encerrando...');
+    console.log('[worker] shutting down...');
     await worker.close();
     await prisma.$disconnect();
     process.exit(0);
@@ -56,6 +56,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error('[worker] erro fatal ao iniciar:', err);
+  console.error('[worker] fatal error on startup:', err);
   process.exit(1);
 });

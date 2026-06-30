@@ -13,8 +13,9 @@ import {
   providers: [
     ClicksService,
     {
-      // A Queue (produtor) é criada com a MESMA conexão que o worker usa,
-      // vinda de queue.constants. Injetada no service via CLICKS_QUEUE_TOKEN.
+      // The Queue (producer) is created with the SAME connection the worker
+      // uses, coming from queue.constants. Injected into the service via
+      // CLICKS_QUEUE_TOKEN.
       provide: CLICKS_QUEUE_TOKEN,
       useFactory: () =>
         new Queue(CLICKS_QUEUE, { connection: createRedisConnection() }),

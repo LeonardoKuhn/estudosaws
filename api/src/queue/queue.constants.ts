@@ -1,25 +1,25 @@
 import IORedis, { Redis } from 'ioredis';
 
 /**
- * Ponto único de configuração da fila.
+ * Single source of truth for the queue configuration.
  *
- * Tanto a Queue (no processo da API, que enfileira jobs) quanto o Worker
- * (no processo separado, que consome jobs) importam daqui. Assim a conexão
- * com o Redis é definida UMA vez só e nunca duplicada.
+ * Both the Queue (in the API process, which enqueues jobs) and the Worker
+ * (in the separate process, which consumes jobs) import from here. This way
+ * the Redis connection is defined ONCE and never duplicated.
  */
 
-// Nome da fila usado pela Queue (produtor) e pelo Worker (consumidor).
+// Queue name used by the Queue (producer) and the Worker (consumer).
 export const CLICKS_QUEUE = 'clicks';
 
-// Token de injeção da Queue no Nest (ver clicks.module.ts).
+// DI token for the Queue in Nest (see clicks.module.ts).
 export const CLICKS_QUEUE_TOKEN = 'CLICKS_QUEUE_TOKEN';
 
 /**
- * Cria uma conexão Redis a partir de REDIS_URL.
+ * Creates a Redis connection from REDIS_URL.
  *
- * `maxRetriesPerRequest: null` é exigido pelo BullMQ para conexões usadas
- * por Workers (eles usam comandos bloqueantes). É inofensivo para a Queue,
- * então usamos a mesma fábrica nos dois lados.
+ * `maxRetriesPerRequest: null` is required by BullMQ for connections used by
+ * Workers (they rely on blocking commands). It is harmless for the Queue, so
+ * we use the same factory on both sides.
  */
 export function createRedisConnection(): Redis {
   const url = process.env.REDIS_URL ?? 'redis://localhost:6379';

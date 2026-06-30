@@ -2,15 +2,15 @@
 
 import { useEffect, useState } from 'react';
 
-// A URL base da API vem do ambiente. No deploy ela muda, então lemos de env
-// desde já em vez de hardcodar.
+// The API base URL comes from the environment. It changes on deploy, so we
+// read it from env from the start instead of hardcoding it.
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3000';
 
 export default function Home() {
   const [count, setCount] = useState<number | null>(null);
   const [sending, setSending] = useState(false);
 
-  // Polling: busca a contagem a cada 1,5s e atualiza o número exibido.
+  // Polling: fetch the count every 1.5s and update the displayed number.
   useEffect(() => {
     let active = true;
 
@@ -20,7 +20,7 @@ export default function Home() {
         const data = await res.json();
         if (active) setCount(data.count);
       } catch {
-        // silencioso: API pode estar subindo ainda
+        // silent: the API might still be starting up
       }
     };
 
@@ -37,7 +37,7 @@ export default function Home() {
     try {
       await fetch(`${API_URL}/clicks`, { method: 'POST' });
     } catch {
-      // ignora erro de rede no estudo
+      // ignore network errors in this study
     } finally {
       setSending(false);
     }
@@ -57,14 +57,14 @@ export default function Home() {
       }}
     >
       <h1 style={{ fontSize: '1.25rem', fontWeight: 600, margin: 0 }}>
-        Contador de cliques
+        Click counter
       </h1>
 
       <div style={{ fontSize: '5rem', fontWeight: 800, lineHeight: 1 }}>
         {count === null ? '…' : count}
       </div>
       <div style={{ fontSize: '0.85rem', opacity: 0.6, marginTop: '-1rem' }}>
-        Cliques processados
+        Processed clicks
       </div>
 
       <button
@@ -81,13 +81,13 @@ export default function Home() {
           fontWeight: 700,
         }}
       >
-        Registrar clique
+        Register click
       </button>
 
       <p style={{ maxWidth: 420, fontSize: '0.85rem', opacity: 0.7, lineHeight: 1.5 }}>
-        O número sobe ~2s após o clique porque um <strong>worker separado</strong>{' '}
-        consome o job da fila, espera 2 segundos (simulando trabalho real) e só
-        então grava no banco.
+        The number goes up ~2s after the click because a{' '}
+        <strong>separate worker</strong> consumes the job from the queue, waits 2
+        seconds (simulating real work), and only then writes to the database.
       </p>
     </main>
   );
