@@ -25,7 +25,9 @@ the feature. It's a sandbox for learning how to ship a multi-service system.
 3. The API **enqueues a job** on BullMQ and immediately responds `202 { queued: true }`.
 4. The **worker** (a separate process) consumes the job, waits **2s on purpose**
    (simulating real work), and writes a row into the `clicks` table in Postgres.
-5. The frontend polls `GET /clicks/count` every 1.5s and updates the number.
+5. The frontend subscribes to `GET /clicks/stream` (Server-Sent Events) and
+   updates the number in **real time** — the API pushes the new count whenever
+   the worker finishes a job. No polling.
 
 The 2s delay is intentional: it makes it visible that a different process does
 the work — the number goes up *after* the click.
@@ -34,22 +36,27 @@ the work — the number goes up *after* the click.
 sequenceDiagram
     participant U as Browser (Next.js :3001)
     participant A as API (NestJS :3000)
-    participant Q as Redis (BullMQ queue)
+    participant Q as Redis (BullMQ + QueueEvents)
     participant W as Worker (NestJS)
     participant D as PostgreSQL
 
+    U->>A: GET /clicks/stream (SSE, opened once)
+    A-->>U: event { count } (current)
     U->>A: POST /clicks
     A->>Q: enqueue job
     A-->>U: 202 { queued: true }
     W->>Q: consume job
     Note over W: wait 2s (simulated work)
     W->>D: INSERT click
-    loop every 1.5s
-        U->>A: GET /clicks/count
-        A->>D: SELECT count(*)
-        A-->>U: { count }
-    end
+    Q-->>A: job completed (QueueEvents)
+    A->>D: SELECT count(*)
+    A-->>U: event { count } (pushed)
 ```
+
+> **Why SSE instead of polling?** Polling every 1.5s sends thousands of
+> requests per open tab even when nothing changes. With Server-Sent Events the
+> API only emits when the worker actually finishes a job, so the idle cost is
+> ~zero — handy when the deploy target bills per request or per active time.
 
 ## Core concept: one image, two processes
 
@@ -109,8 +116,9 @@ This brings up the four services. The API applies the Prisma migration
 
 - API: http://localhost:3010 (host port 3000 is often already taken, so the API
   is published as **3010 → 3000**; adjust in `docker-compose.yml` if you like)
-- `GET /clicks/count` → `{ "count": n }`
 - `POST /clicks` → `202 { "queued": true }`
+- `GET /clicks/count` → `{ "count": n }` (one-shot read; handy for curl)
+- `GET /clicks/stream` → Server-Sent Events stream of `{ "count": n }`
 
 > Postgres and Redis **do not** publish host ports (they are reached only over
 > the compose internal network) to avoid clashing with local instances.

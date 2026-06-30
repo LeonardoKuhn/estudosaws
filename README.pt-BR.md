@@ -25,7 +25,9 @@ feature. É um laboratório para aprender a *shippar* um sistema multi-serviço.
 3. A API **enfileira um job** no BullMQ e responde na hora `202 { queued: true }`.
 4. O **worker** (processo separado) consome o job, espera **2s de propósito**
    (simula trabalho real) e grava uma linha na tabela `clicks` do Postgres.
-5. O frontend faz polling em `GET /clicks/count` a cada 1,5s e atualiza o número.
+5. O frontend assina `GET /clicks/stream` (Server-Sent Events) e atualiza o
+   número em **tempo real** — a API empurra o novo count sempre que o worker
+   conclui um job. Sem polling.
 
 O delay de 2s é intencional: deixa visível que outro processo faz o trabalho —
 o número sobe *depois* do clique.
@@ -34,22 +36,27 @@ o número sobe *depois* do clique.
 sequenceDiagram
     participant U as Browser (Next.js :3001)
     participant A as API (NestJS :3000)
-    participant Q as Redis (fila BullMQ)
+    participant Q as Redis (BullMQ + QueueEvents)
     participant W as Worker (NestJS)
     participant D as PostgreSQL
 
+    U->>A: GET /clicks/stream (SSE, aberto uma vez)
+    A-->>U: event { count } (atual)
     U->>A: POST /clicks
     A->>Q: enfileira job
     A-->>U: 202 { queued: true }
     W->>Q: consome job
     Note over W: espera 2s (trabalho simulado)
     W->>D: INSERT click
-    loop a cada 1,5s
-        U->>A: GET /clicks/count
-        A->>D: SELECT count(*)
-        A-->>U: { count }
-    end
+    Q-->>A: job concluído (QueueEvents)
+    A->>D: SELECT count(*)
+    A-->>U: event { count } (empurrado)
 ```
+
+> **Por que SSE em vez de polling?** Polling a cada 1,5s manda milhares de
+> requests por aba aberta mesmo sem nada mudar. Com Server-Sent Events a API só
+> emite quando o worker realmente conclui um job, então o custo ocioso é
+> ~zero — útil quando o destino de deploy cobra por request ou por tempo ativo.
 
 ## Conceito central: uma imagem, dois processos
 
@@ -109,8 +116,9 @@ Isso sobe os quatro serviços. A API aplica a migration do Prisma
 
 - API: http://localhost:3010 (a porta 3000 do host costuma estar ocupada, então
   publicamos a API em **3010 → 3000**; ajuste no `docker-compose.yml` se quiser)
-- `GET /clicks/count` → `{ "count": n }`
 - `POST /clicks` → `202 { "queued": true }`
+- `GET /clicks/count` → `{ "count": n }` (leitura pontual; útil pra curl)
+- `GET /clicks/stream` → stream Server-Sent Events de `{ "count": n }`
 
 > Postgres e Redis **não** publicam portas no host (são acessados só pela rede
 > interna do compose), para não conflitar com instâncias locais.

@@ -10,26 +10,20 @@ export default function Home() {
   const [count, setCount] = useState<number | null>(null);
   const [sending, setSending] = useState(false);
 
-  // Polling: fetch the count every 1.5s and update the displayed number.
+  // Real-time updates via Server-Sent Events: the API pushes the new count
+  // whenever the worker finishes a job. No polling — a single open connection.
   useEffect(() => {
-    let active = true;
-
-    const fetchCount = async () => {
+    const source = new EventSource(`${API_URL}/clicks/stream`);
+    source.onmessage = (event) => {
       try {
-        const res = await fetch(`${API_URL}/clicks/count`, { cache: 'no-store' });
-        const data = await res.json();
-        if (active) setCount(data.count);
+        const data = JSON.parse(event.data);
+        setCount(data.count);
       } catch {
-        // silent: the API might still be starting up
+        // ignore malformed event
       }
     };
-
-    fetchCount();
-    const id = setInterval(fetchCount, 1500);
-    return () => {
-      active = false;
-      clearInterval(id);
-    };
+    // EventSource auto-reconnects on its own; just clean up on unmount.
+    return () => source.close();
   }, []);
 
   const registerClick = async () => {
@@ -84,10 +78,11 @@ export default function Home() {
         Register click
       </button>
 
-      <p style={{ maxWidth: 420, fontSize: '0.85rem', opacity: 0.7, lineHeight: 1.5 }}>
-        The number goes up ~2s after the click because a{' '}
-        <strong>separate worker</strong> consumes the job from the queue, waits 2
-        seconds (simulating real work), and only then writes to the database.
+      <p style={{ maxWidth: 440, fontSize: '0.85rem', opacity: 0.7, lineHeight: 1.5 }}>
+        The number updates in real time: a <strong>separate worker</strong>{' '}
+        consumes the job from the queue, waits 2 seconds (simulating real work),
+        writes to the database, and the API <strong>pushes</strong> the new count
+        to the browser over Server-Sent Events.
       </p>
     </main>
   );
